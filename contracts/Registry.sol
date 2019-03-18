@@ -1,22 +1,30 @@
-/pragma solidity ^0.5.2;
+pragma solidity ^0.5.2;
 
-import "openzeppelin-solidity/contracts/token/ERC721/ERC721.sol";
-import "openzeppelin-solidity/contracts/token/ERC721/ERC721Enumerable.sol";
-import "./utils/StringLength.sol";
+import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
+import "./utils/StringLength.sol";
+
+// Notes:
+// * All domains must be lower case, this will be done by enforcing 0-9, a-z
 
 contract Registry is ERC721Full {
+    // using Counters for Counters.Counter;
+    
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
 
     }
 
     struct Auction {
-        uint        auctionID;
-        uint        winningBid;
-        address     winningBidder;
-        uint        auctionEnd;
-        string      domainName;
+        uint                    winningBid;
+        address                 winningBidder;
+        uint                    auctionEnd;
+        string                  domainName;
+        bool                    auctionEnded;
+        mapping(uint => uint)   refunds;
     }
+
+    Counters.Counter private _tokenCount;
+    Counters.Counter private _auctionCount;
 
     // Mapping from token to domain name
     mapping(uint256 => string) private _tokenDomain;
@@ -24,40 +32,132 @@ contract Registry is ERC721Full {
     // Mapping from domain to address
     mapping(string => address) private _domainAddress;
 
-    // Public Functions
-    function startAuction() {
-        // Check that a domain has not been registered and start a new auction
-        // Reserve the domain name in the pending mapping, preventing duplicate auctions
+    // Mapping from domain to subdomain
+    mapping(string => string) private _subDomainToDomain;
+
+    // Mapping from subdomain to address
+    mapping(string => address) private _subDomainToAddress;
+
+    // Mapping from auction ID to auction struct
+    mapping(uint256 => Auction) private _auctions;
+
+    // Mapping from domain names to active auction status.
+    mapping(string => uint256) private _domainToAuction;
+
+    // External Public Functions
+    // Domain Functions
+    function addSubdomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) external {
+        _isApprovedOrOwner(msg.sender, _tokenID);
+
+        string memory _domain = _tokenDomain[_tokenID];
+        _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = _domain;
+        _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
     }
 
-    function bidOnAuction() {
-        // Bid on an auction that is currently active
+    function removeSubdomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) external {
+        _isApprovedOrOwner(msg.sender, _tokenID);
+
+        string memory _domain = _tokenDomain[_tokenID];
+        _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = "";
+        _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
+    }
+    
+    // Auction Functions
+    function startAuction(string memory _domain) external payable {
+        _auctionID = _auctionCount.current();
+        _newAuction(_domain);
+        
+        if (msg.value > 10 eth) {                               // Minimum bid amount is 10 VET
+            _bidOnAuction(_auctionID, msg.value, msg.sender);
+        }
     }
 
-    function finalizeAuction() {
-        // Once an auction has passed its expiry, anyone (usually the winner) can call to finalize the auction and create the domain
+    function bidOnAuction(uint256 _auctionID) external payable {
+        _bidOnAuction(_auctionID, msg.value, msg.sender);
+    }
+
+    function finalizeAuction(uint256 _tokenID) external {
+        Auction storage a = _auctions[_auctionID];
+        require(
+            !a.auctionEnded && now > a.auctionEnd,
+            "Auction must be expired and not ended"
+        )
+
+        _registerDomain(a.domainName, a.winningBidder);
+
+        a.auctionEnded = true;                                  // Prevent new bids on the auction
+        _domainToAuction[a.domainName] = 0;                     // Reset entry in domainToAuction
+        
+        // Emit Auction Close Event
     }
 
     // Private Functions
-    function registerDomain(string memory _domainName, address _owner) internal {
-        require(verifyNewDomain(_domainName));
+    function _registerDomain(string memory _domainName, address _owner) internal {
+        require(
+            verifyNewDomain(_domainName),
+            "Domain is already registered"
+        );          
 
-        uint256 _tokenID = current();                   // tokenID is equal to its count
-        _mint(_owner, _tokenID);                        // Call the mint function of ERC721Enumerable
-        increment();                                    // Increment counter after minting
+        uint256 _tokenID = _tokenCount.current();               // tokenID is equal to its count
+        _mint(_owner, _tokenID);                                // Call the mint function of ERC721Enumerable
+        _tokenCount.increment();                                // Increment counter after minting
 
         // Set VNS Specific Data
-        _tokenDomain[_tokenID] = _domainName;           // Link the tokenID to the current address
-        _domainAddress[_domainName] = _owner;           // Intialize the address to point at the owner
+        _tokenDomain[_tokenID] = _domainName;                   // Link the tokenID to the current address
+        _domainAddress[_domainName] = _owner;                   // Intialize the address to point at the owner
     }
 
     function destroyToken(address _owner, uint256 _tokenID) internal {
         _burn(_owner, _tokenID);
 
         // Reset VNS Specific Data
-        string _domainName = _tokenDomain[_tokenID];
-        _tokenDomain[_tokenID] = "";                    // Reset token to domain name
-        _domainAddress[_domainName] = address(0);       // Reset domain name to 0x address
+        string memory _domainName = _tokenDomain[_tokenID];
+        _tokenDomain[_tokenID] = "";                            // Reset token to domain name
+        _domainAddress[_domainName] = address(0);               // Reset domain name to 0x address
+    }
+
+    function _newAuction(_domain) internal {
+        require(
+            verifyNewDomain(_domainName),
+            "Domain is already registered"
+        )
+        require(
+            _domainToAuction[_domain] == 0,
+            "There is already an active auction for this domain"
+        )
+
+        uint _auctionID = _auctionCount.current();
+        uint _auctionEnd = now + 3 days;                        // Bidding lasts 3 days
+        _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain);   // Creates new auction struct in the auctions mapping
+        _domainToAuction[_domain] = _auctionID;
+
+        _auctionCount.increment();
+    }
+
+    function _bidOnAuction(uint _auctionID, uint _bid, address _bidder) internal {
+        Auction storage a = _auctions[_auctionID];
+        require(
+            _bid > a.winningBid,
+            "New bid must dethrone winning bid"
+        )
+        
+        require(
+            now < a.auctionEnd && !a.auctionEnded,
+            "Cannot bid after auction has ended"
+        )
+        
+        require(
+            _bid > 10,
+            "Bid amount must be greater than minimum bid"
+        )
+
+        // Refund the previous top bidder
+        uint _refundAmount = a.winningBid;
+        address _refundAddress = a.winningBidder;
+        a.refunds[];
+
+        a.winningBid = _bid;
+        a.winningBidder = _bidder
     }
 
     // Helper Functions
@@ -69,7 +169,5 @@ contract Registry is ERC721Full {
         // Return the auctionID for a particular domain name
         // If no active auction, returns [X]
     }
-
-
 
 }
