@@ -11,7 +11,8 @@ contract Registry is ERC721Full {
     // using Counters for Counters.Counter;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
-
+        _tokenCount.increment();                        // Start counters at 1
+        _auctionCount.increment();                      // Start counters at 1
     }
 
     struct Auction {
@@ -20,7 +21,7 @@ contract Registry is ERC721Full {
         uint                    auctionEnd;
         string                  domainName;
         bool                    auctionEnded;
-        mapping(uint => uint)   refunds;
+        mapping(address => uint)   refunds;                // Mapping from address to refund amount
     }
 
     Counters.Counter private _tokenCount;
@@ -67,7 +68,7 @@ contract Registry is ERC721Full {
         _auctionID = _auctionCount.current();
         _newAuction(_domain);
         
-        if (msg.value > 10 eth) {                               // Minimum bid amount is 10 VET
+        if (msg.value > 10 ether) {                               // Minimum bid amount is 10 VET
             _bidOnAuction(_auctionID, msg.value, msg.sender);
         }
     }
@@ -76,12 +77,21 @@ contract Registry is ERC721Full {
         _bidOnAuction(_auctionID, msg.value, msg.sender);
     }
 
+    function claimRefund(uint256 _tokenID, ) {                      // [Q] Do we need to check that it's not empty?
+        Auction storage a = _auctions[_auctionID];
+
+        uint amount = a.refunds[msg.sender];                        // Save how much to refund before wiping the entry
+        a.refunds[msg.sender] = 0;                                  // Reset the refund amount before processing refund
+
+        msg.sender.transfer(amount);                                // Transfer the amount to the refundee
+    }
+
     function finalizeAuction(uint256 _tokenID) external {
         Auction storage a = _auctions[_auctionID];
         require(
             !a.auctionEnded && now > a.auctionEnd,
             "Auction must be expired and not ended"
-        )
+        );
 
         _registerDomain(a.domainName, a.winningBidder);
 
@@ -120,11 +130,11 @@ contract Registry is ERC721Full {
         require(
             verifyNewDomain(_domainName),
             "Domain is already registered"
-        )
+        );
         require(
             _domainToAuction[_domain] == 0,
             "There is already an active auction for this domain"
-        )
+        );
 
         uint _auctionID = _auctionCount.current();
         uint _auctionEnd = now + 3 days;                        // Bidding lasts 3 days
@@ -139,35 +149,30 @@ contract Registry is ERC721Full {
         require(
             _bid > a.winningBid,
             "New bid must dethrone winning bid"
-        )
+        );
         
         require(
             now < a.auctionEnd && !a.auctionEnded,
             "Cannot bid after auction has ended"
-        )
+        );
         
         require(
             _bid > 10,
             "Bid amount must be greater than minimum bid"
-        )
+        );
 
         // Refund the previous top bidder
         uint _refundAmount = a.winningBid;
         address _refundAddress = a.winningBidder;
-        a.refunds[];
+        a.refunds[_refundAddress] += _refundAmount;
 
         a.winningBid = _bid;
-        a.winningBidder = _bidder
+        a.winningBidder = _bidder;
     }
 
     // Helper Functions
     function verifyNewDomain(string memory _domainName) internal view returns (bool) {
         return _domainAddress[_domainName] == address(0);
-    }
-
-    function getAuctionIDByDomain(string memory _domainName) public view returns (uint256) {
-        // Return the auctionID for a particular domain name
-        // If no active auction, returns [X]
     }
 
 }
