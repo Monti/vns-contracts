@@ -47,11 +47,11 @@ contract Registry is ERC721Full {
 
     // External Public Functions
     // Domain Functions
-    function resolveDomain(string memory _domainName) external returns (address) {
+    function resolveDomain(string calldata _domainName) external view returns (address) {
         return _domainAddress[_domainName];
     }
 
-    function addSubdomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) external {
+    function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
         string memory _domain = _tokenDomain[_tokenID];
@@ -59,7 +59,7 @@ contract Registry is ERC721Full {
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
     }
 
-    function removeSubdomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) external {
+    function removeSubdomain(uint256 _tokenID, string calldata _subDomain) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
         string memory _domain = _tokenDomain[_tokenID];
@@ -68,8 +68,8 @@ contract Registry is ERC721Full {
     }
     
     // Auction Functions
-    function startAuction(string memory _domain) external payable {
-        _auctionID = _auctionCount.current();
+    function startAuction(string calldata _domain) external payable {
+        uint _auctionID = _auctionCount.current();
         _newAuction(_domain);
         
         if (msg.value > 10 ether) {                               // Minimum bid amount is 10 VET
@@ -81,7 +81,7 @@ contract Registry is ERC721Full {
         _bidOnAuction(_auctionID, msg.value, msg.sender);
     }
 
-    function claimRefund(uint256 _tokenID, ) {                      // [Q] Do we need to check that it's not empty?
+    function claimRefund(uint256 _auctionID) external {               // [Q] Do we need to check that it's not empty?
         Auction storage a = _auctions[_auctionID];
 
         uint amount = a.refunds[msg.sender];                        // Save how much to refund before wiping the entry
@@ -90,7 +90,7 @@ contract Registry is ERC721Full {
         msg.sender.transfer(amount);                                // Transfer the amount to the refundee
     }
 
-    function finalizeAuction(uint256 _tokenID) external {
+    function finalizeAuction(uint256 _auctionID) external {
         Auction storage a = _auctions[_auctionID];
         require(
             !a.auctionEnded && now > a.auctionEnd,
@@ -130,9 +130,9 @@ contract Registry is ERC721Full {
         _domainAddress[_domainName] = address(0);               // Reset domain name to 0x address
     }
 
-    function _newAuction(_domain) internal {
+    function _newAuction(string memory _domain) internal {
         require(
-            verifyNewDomain(_domainName),
+            verifyNewDomain(_domain),
             "Domain is already registered"
         );
         require(
@@ -142,7 +142,7 @@ contract Registry is ERC721Full {
 
         uint _auctionID = _auctionCount.current();
         uint _auctionEnd = now + 3 days;                        // Bidding lasts 3 days
-        _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain);   // Creates new auction struct in the auctions mapping
+        _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false);   // Creates new auction struct in the auctions mapping
         _domainToAuction[_domain] = _auctionID;
 
         _auctionCount.increment();
