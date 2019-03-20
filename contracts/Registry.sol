@@ -47,6 +47,10 @@ contract Registry is ERC721Full {
 
     // External Public Functions
     // Domain Functions
+    function resolveDomain(string memory _domainName) external returns (address) {
+        return _domainAddress[_domainName];
+    }
+
     function addSubdomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
