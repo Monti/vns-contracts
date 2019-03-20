@@ -84,12 +84,19 @@ contract Registry is ERC721Full {
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
     }
     
+    function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
+        string memory domainName =  _tokenDomain[_tokenID];
+        require(strlen(domainName < 7));                                            // Minimum size is 6, longer domains will be deleted
+
+        _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
+    }
+
     // Auction Functions
     function startAuction(string calldata _domain) external payable {
         uint _auctionID = _auctionCount.current();
         _newAuction(_domain);
         
-        if (msg.value > 1 ether) {                               // For testing, minimum is 1 eth / vet
+        if (msg.value > 1 ether) {                                  // For testing, minimum is 1 eth / vet
             _bidOnAuction(_auctionID, msg.value, msg.sender);
         }
     }
@@ -98,7 +105,7 @@ contract Registry is ERC721Full {
         _bidOnAuction(_auctionID, msg.value, msg.sender);
     }
 
-    function claimRefund(uint256 _auctionID) external {               // [Q] Do we need to check that it's not empty?
+    function claimRefund(uint256 _auctionID) external {             // [Q] Do we need to check that it's not empty?
         Auction storage a = _auctions[_auctionID];
 
         uint amount = a.refunds[msg.sender];                        // Save how much to refund before wiping the entry
@@ -136,15 +143,6 @@ contract Registry is ERC721Full {
         // Set VNS Specific Data
         _tokenDomain[_tokenID] = _domainName;                   // Link the tokenID to the current address
         _domainAddress[_domainName] = _owner;                   // Intialize the address to point at the owner
-    }
-
-    function destroyToken(address _owner, uint256 _tokenID) internal {
-        _burn(_owner, _tokenID);
-
-        // Reset VNS Specific Data
-        string memory _domainName = _tokenDomain[_tokenID];
-        _tokenDomain[_tokenID] = "";                            // Reset token to domain name
-        _domainAddress[_domainName] = address(0);               // Reset domain name to 0x address
     }
 
     function _newAuction(string memory _domain) internal {
@@ -194,6 +192,12 @@ contract Registry is ERC721Full {
     // Helper Functions
     function verifyNewDomain(string memory _domainName) internal view returns (bool) {
         return _domainAddress[_domainName] == address(0);
+    }
+
+    function _burnDomain(uint256 _tokenID, string memory _domainName) {
+        delete _tokenDomain[_tokenID];
+        delete _domainAddress[_domainName];
+        _burn[_tokenID];
     }
 
 }
