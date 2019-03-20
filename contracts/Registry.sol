@@ -45,12 +45,29 @@ contract Registry is ERC721Full {
     // Mapping from domain names to active auction status.
     mapping(string => uint256) private _domainToAuction;
 
-    // External Public Functions
-    // Domain Functions
+
+    // View Functions
+    // Domain
     function resolveDomain(string calldata _domainName) external view returns (address) {
         return _domainAddress[_domainName];
     }
 
+    // Auction
+    function getWinningBid(uint256 _auctionID) external view returns (uint256) {
+        return _auctions[_auctionID].winningBid;
+    }
+
+    function getWinningBidder(uint256 _auctionID) external view returns (address) {
+        return _auctions[_auctionID].winningBidder;
+    }
+
+    function getAuctionEnd(uint256 _auctionID) external view returns (uint256) {
+        return _auctions[_auctionID].auctionEnd;
+    }
+
+
+    // External Public Functions
+    // Domain Functions
     function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
@@ -72,7 +89,7 @@ contract Registry is ERC721Full {
         uint _auctionID = _auctionCount.current();
         _newAuction(_domain);
         
-        if (msg.value > 10 ether) {                               // Minimum bid amount is 10 VET
+        if (msg.value > 1 ether) {                               // For testing, minimum is 1 eth / vet
             _bidOnAuction(_auctionID, msg.value, msg.sender);
         }
     }
