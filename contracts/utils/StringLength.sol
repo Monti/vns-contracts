@@ -8,14 +8,13 @@ library StringLength {
      * @param s The string to measure the length of
      * @return The length of the input string
      */
-    function strlen(string memory s) internal pure returns (uint) {
-        s; // Don't warn about unused variables
-        // Starting here means the LSB will be the byte we care about
+    function strlen(string calldata s) external pure returns (uint) {
+        string memory str = s;
         uint ptr;
         uint end;
         assembly {
-            ptr := add(s, 1)
-            end := add(mload(s), ptr)
+            ptr := add(str, 1)
+            end := add(mload(str), ptr)
         }
         uint len = 0;
         for (len; ptr < end; len++) {
