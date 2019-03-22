@@ -12,8 +12,8 @@ contract Registry is ERC721Full {
     using StringLength for string;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
-        _tokenCount.increment();                        // Start counters at 1
-        _auctionCount.increment();                      // Start counters at 1
+        _tokenCount.increment();                            // Start counters at 1
+        _auctionCount.increment();                          // Start counters at 1
     }
 
     struct Auction {
@@ -21,8 +21,10 @@ contract Registry is ERC721Full {
         address                 winningBidder;
         uint                    auctionEnd;
         string                  domainName;
-        bool                    auctionEnded;
-        mapping(address => uint)   refunds;                // Mapping from address to refund amount
+        bool                    biddingEnded;
+        uint                    revealEnd;
+        mapping(address => uint)   refunds;                 // Mapping from address to refund amount
+        mapping(address => bytes32) blindedBid;            // Mapping from id to shielded bids - sending a new bid updates your bid
     }
 
     Counters.Counter private _tokenCount;
@@ -46,20 +48,14 @@ contract Registry is ERC721Full {
     // Mapping from domain names to active auction status.
     mapping(string => uint256) private _domainToAuction;
 
+    // Mapping from tokenIDs to purchase cost
+    mapping(uint256 => uint256) private _tokenToCost;
+
 
     // View Functions
     // Domain
     function resolveDomain(string calldata _domainName) external view returns (address) {
         return _domainToAddress[_domainName];
-    }
-
-    // Auction
-    function getWinningBid(uint256 _auctionID) external view returns (uint256) {
-        return _auctions[_auctionID].winningBid;
-    }
-
-    function getWinningBidder(uint256 _auctionID) external view returns (address) {
-        return _auctions[_auctionID].winningBidder;
     }
 
     function getAuctionEnd(uint256 _auctionID) external view returns (uint256) {
@@ -87,69 +83,114 @@ contract Registry is ERC721Full {
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
         string memory domainName =  _tokenToDomain[_tokenID];
-        require(StringLength.strlen(domainName) < 7);                                            // Minimum size is 6, longer domains will be deleted
+        require(StringLength.strlen(domainName) < 7);                               // Minimum size is 6, longer domains will be deleted
 
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
     }
 
     // Auction Functions
     function startAuction(string calldata _domain) external payable {
-        uint _auctionID = _auctionCount.current();
         _newAuction(_domain);
+    }
+
+    function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {
+        Auction storage a = _auctions[_auctionID];
         
-        if (msg.value > 1 ether) {                                  // For testing, minimum is 1 eth / vet
-            _bidOnAuction(_auctionID, msg.value, msg.sender);
+        require(
+            now < a.auctionEnd && !a.biddingEnded,
+            "Cannot bid after auction has ended"
+        );
+
+        require(
+            msg.value == 10 ether,                                          // Bond dissincentivises no-show bidding
+            "Bidder must attach a good behaviour bond"
+        );
+
+        if (a.blindedBid[msg.sender] == "") {                               // If user doesn't already have a bid
+            a.blindedBid[msg.sender] = _blindedBid;
+            return;
+        } else {
+            a.blindedBid[msg.sender] = _blindedBid;
+            msg.sender.transfer(10 ether);                                  // Refund their 2nd behaviour bond
         }
     }
 
-    function bidOnAuction(uint256 _auctionID) external payable {
-        _bidOnAuction(_auctionID, msg.value, msg.sender);
+    function finalizeBidding(uint256 _auctionID) external {
+        Auction storage a = _auctions[_auctionID];
+        
+        require(
+            now > a.auctionEnd && !a.biddingEnded,
+            "Cannot close an auction too early, or after it has already been closed"
+        );
+
+        a.biddingEnded == true;
+        a.revealEnd = now + 1 days;
+        // Emit auctionEnd event
     }
 
-    function claimRefund(uint256 _auctionID) external {             // [Q] Do we need to check that it's not empty?
+    function revealBid(bytes32 _secret, uint256 _auctionID) external payable returns (bool winning) {
         Auction storage a = _auctions[_auctionID];
+        
+        require(
+            !a.biddingEnded && now < a.revealEnd,
+            "Cannot reveal before auction has ended and after reveal period has ended"
+        );
 
-        uint amount = a.refunds[msg.sender];                        // Save how much to refund before wiping the entry
-        a.refunds[msg.sender] = 0;                                  // Reset the refund amount before processing refund
+        require(
+            a.blindedBid[msg.sender] == keccak256(abi.encodePacked(msg.value, _secret)),
+            "Secret or attached value were incorrect"
+        );
 
-        msg.sender.transfer(amount);                                // Transfer the amount to the refundee
+        if (msg.value <= a.winningBid) {
+            delete(a.blindedBid[msg.sender]);
+            msg.sender.transfer(msg.value + 10);
+            return false;
+        }
+
+        if (a.winningBidder != address(0)) {
+            a.refunds[a.winningBidder] += a.winningBid + 10 ether; // Can we implicitly convert ether to uint256?
+        }
+
+        a.winningBidder = msg.sender;
+        a.winningBid = msg.value;
+        return true;
     }
 
     function finalizeAuction(uint256 _auctionID) external {
         Auction storage a = _auctions[_auctionID];
-        require(
-            !a.auctionEnded && now > a.auctionEnd,
-            "Auction must be expired and not ended"
-        );
-
-        _registerDomain(a.domainName, a.winningBidder);
-
-        a.auctionEnded = true;                                  // Prevent new bids on the auction
-        _domainToAuction[a.domainName] = 0;                     // Reset entry in domainToAuction
         
-        // Emit Auction Close Event
+        require(
+            now > a.revealEnd,
+            "Cannot finalize the auction too early"
+        );
+        
+        _registerDomain(a.domainName, a.winningBidder, a.winningBid);   // Winning bidder receives the domain
+        delete(_auctions[_auctionID]);                                                      // Delete the auction struct
+        // Emit auctionEnd event
     }
 
     // Private Functions
-    function _registerDomain(string memory _domainName, address _owner) internal {
+    function _registerDomain(string memory _domainName, address _owner, uint256 _pricePaid) internal {
         require(
             verifyNewDomain(_domainName),
             "Domain is already registered"
         );          
 
-        uint256 _tokenID = _tokenCount.current();               // tokenID is equal to its count
-        _mint(_owner, _tokenID);                                // Call the mint function of ERC721Enumerable
-        _tokenCount.increment();                                // Increment counter after minting
+        uint256 _tokenID = _tokenCount.current();                       // tokenID is equal to its count
+        _mint(_owner, _tokenID);                                        // Call the mint function of ERC721Enumerable
+        _tokenCount.increment();                                        // Increment counter after minting
 
         // Set VNS Specific Data
-        _tokenToDomain[_tokenID] = _domainName;                   // Link the tokenID to the current address
-        _domainToAddress[_domainName] = _owner;                   // Intialize the address to point at the owner
+        _tokenToDomain[_tokenID] = _domainName;                         // Link the tokenID to the current address
+        _domainToAddress[_domainName] = _owner;                         // Intialize the address to point at the owner
+        _tokenToCost[_tokenID] = _pricePaid;                            // Record how much the domain cost to register
+        delete(_domainToAuction[_domainName]);                          // Stop blocking new auctions for this domain (should it deregister)
     }
 
     function _newAuction(string memory _domain) internal {
         require(
             verifyNewDomain(_domain),
-            "Domain is already registered"
+            "Can't register an already existing domain"
         );
         require(
             _domainToAuction[_domain] == 0,
@@ -158,36 +199,10 @@ contract Registry is ERC721Full {
 
         uint _auctionID = _auctionCount.current();
         uint _auctionEnd = now + 3 days;                        // Bidding lasts 3 days
-        _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false);   // Creates new auction struct in the auctions mapping
+        _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false, 0);   // Creates new auction struct in the auctions mapping
         _domainToAuction[_domain] = _auctionID;
 
         _auctionCount.increment();
-    }
-
-    function _bidOnAuction(uint _auctionID, uint _bid, address _bidder) internal {
-        Auction storage a = _auctions[_auctionID];
-        require(
-            _bid > a.winningBid,
-            "New bid must dethrone winning bid"
-        );
-        
-        require(
-            now < a.auctionEnd && !a.auctionEnded,
-            "Cannot bid after auction has ended"
-        );
-        
-        require(
-            _bid > 10,
-            "Bid amount must be greater than minimum bid"
-        );
-
-        // Refund the previous top bidder
-        uint _refundAmount = a.winningBid;
-        address _refundAddress = a.winningBidder;
-        a.refunds[_refundAddress] += _refundAmount;
-
-        a.winningBid = _bid;
-        a.winningBidder = _bidder;
     }
 
     // Helper Functions
