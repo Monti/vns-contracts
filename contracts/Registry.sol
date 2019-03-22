@@ -9,6 +9,7 @@ import "./utils/StringLength.sol";
 
 contract Registry is ERC721Full {
     // using Counters for Counters.Counter;
+    using StringLength for string;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
         _tokenCount.increment();                        // Start counters at 1
@@ -194,10 +195,10 @@ contract Registry is ERC721Full {
         return _domainAddress[_domainName] == address(0);
     }
 
-    function _burnDomain(uint256 _tokenID, string memory _domainName) {
+    function _burnDomain(uint256 _tokenID, string memory _domainName) internal {
         delete _tokenDomain[_tokenID];
         delete _domainAddress[_domainName];
-        _burn[_tokenID];
+        _burn(ownerOf(_tokenID), _tokenID);
     }
 
 }
