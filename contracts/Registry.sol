@@ -8,6 +8,8 @@ import "./utils/StringLength.sol";
 // * All domains must be lower case, this will be done by enforcing 0-9, a-z
 
 contract Registry is ERC721Full {
+    using StringLength for string;
+
     // using Counters for Counters.Counter;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
@@ -86,7 +88,7 @@ contract Registry is ERC721Full {
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
         string memory domainName =  _tokenDomain[_tokenID];
-        require(strlen(domainName < 7));                                            // Minimum size is 6, longer domains will be deleted
+        require(StringLength.strlen(domainName) < 7);                                            // Minimum size is 6, longer domains will be deleted
 
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
     }
@@ -197,7 +199,7 @@ contract Registry is ERC721Full {
     function _burnDomain(uint256 _tokenID, string memory _domainName) {
         delete _tokenDomain[_tokenID];
         delete _domainAddress[_domainName];
-        _burn[_tokenID];
+        // _burn[_tokenID];
     }
 
 }
