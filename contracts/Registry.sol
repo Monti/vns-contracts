@@ -29,10 +29,10 @@ contract Registry is ERC721Full {
     Counters.Counter private _auctionCount;
 
     // Mapping from token to domain name
-    mapping(uint256 => string) private _tokenDomain;
+    mapping(uint256 => string) private _tokenToDomain;
 
     // Mapping from domain to address
-    mapping(string => address) private _domainAddress;
+    mapping(string => address) private _domainToAddress;
 
     // Mapping from domain to subdomain
     mapping(string => string) private _subDomainToDomain;
@@ -50,7 +50,7 @@ contract Registry is ERC721Full {
     // View Functions
     // Domain
     function resolveDomain(string calldata _domainName) external view returns (address) {
-        return _domainAddress[_domainName];
+        return _domainToAddress[_domainName];
     }
 
     // Auction
@@ -72,7 +72,7 @@ contract Registry is ERC721Full {
     function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
-        string memory _domain = _tokenDomain[_tokenID];
+        string memory _domain = _tokenToDomain[_tokenID];
         _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = _domain;
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
     }
@@ -80,13 +80,13 @@ contract Registry is ERC721Full {
     function removeSubdomain(uint256 _tokenID, string calldata _subDomain) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
-        string memory _domain = _tokenDomain[_tokenID];
+        string memory _domain = _tokenToDomain[_tokenID];
         _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = "";
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
     }
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
-        string memory domainName =  _tokenDomain[_tokenID];
+        string memory domainName =  _tokenToDomain[_tokenID];
         require(StringLength.strlen(domainName) < 7);                                            // Minimum size is 6, longer domains will be deleted
 
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
@@ -142,8 +142,8 @@ contract Registry is ERC721Full {
         _tokenCount.increment();                                // Increment counter after minting
 
         // Set VNS Specific Data
-        _tokenDomain[_tokenID] = _domainName;                   // Link the tokenID to the current address
-        _domainAddress[_domainName] = _owner;                   // Intialize the address to point at the owner
+        _tokenToDomain[_tokenID] = _domainName;                   // Link the tokenID to the current address
+        _domainToAddress[_domainName] = _owner;                   // Intialize the address to point at the owner
     }
 
     function _newAuction(string memory _domain) internal {
@@ -192,12 +192,12 @@ contract Registry is ERC721Full {
 
     // Helper Functions
     function verifyNewDomain(string memory _domainName) internal view returns (bool) {
-        return _domainAddress[_domainName] == address(0);
+        return _domainToAddress[_domainName] == address(0);
     }
 
     function _burnDomain(uint256 _tokenID, string memory _domainName) internal {
-        delete _tokenDomain[_tokenID];
-        delete _domainAddress[_domainName];
+        delete _tokenToDomain[_tokenID];
+        delete _domainToAddress[_domainName];
         _burn(ownerOf(_tokenID), _tokenID);
     }
 
