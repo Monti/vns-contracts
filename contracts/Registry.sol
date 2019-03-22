@@ -87,7 +87,7 @@ contract Registry is ERC721Full {
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
         string memory domainName =  _tokenDomain[_tokenID];
-        require(strlen(domainName < 7));                                            // Minimum size is 6, longer domains will be deleted
+        require(StringLength.strlen(domainName) < 7);                                            // Minimum size is 6, longer domains will be deleted
 
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
     }
