@@ -66,10 +66,13 @@ contract Registry is ERC721Full {
     }
 
     // Auction
+    function getAuctionID(string calldata _domain) external view returns (uint256 auctionID) {
+        return _domainToAuction[_domain];
+    }
+
     function getUserAuctions(address _user) external view returns (uint256[] memory auctions) {
         return _userAuctions[_user];
     }
-
 
     // External Public Functions
     // Domain Functions
@@ -158,7 +161,7 @@ contract Registry is ERC721Full {
         }
 
         if (a.winningBidder != address(0)) {
-            a.refunds[a.winningBidder] += a.winningBid + 10 ether; // Can we implicitly convert ether to uint256?
+            a.refunds[a.winningBidder] += a.winningBid + 10 ether;          // Can we implicitly convert ether to uint256?
         }
 
         a.winningBidder = msg.sender;
@@ -173,9 +176,11 @@ contract Registry is ERC721Full {
             now > a.revealEnd,
             "Cannot finalize the auction too early"
         );
-        
-        _registerDomain(a.domainName, a.winningBidder, a.winningBid);   // Winning bidder receives the domain
-        delete(_auctions[_auctionID]);                                  // Delete the auction struct
+
+        if (a.winningBidder != address(0)) {
+            _registerDomain(a.domainName, a.winningBidder, a.winningBid);   // Winning bidder, if they exist, receives the domain
+        }
+        delete(_auctions[_auctionID]);                                      // Delete the auction struct
         // Emit auctionEnd event
     }
 
