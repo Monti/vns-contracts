@@ -24,7 +24,7 @@ contract Registry is ERC721Full {
         bool                    biddingEnded;
         uint                    revealEnd;
         mapping(address => uint)   refunds;                 // Mapping from address to refund amount
-        mapping(address => bytes32) blindedBid;            // Mapping from id to shielded bids - sending a new bid updates your bid
+        mapping(address => bytes32) blindedBid;             // Mapping from id to shielded bids - sending a new bid updates your bid
     }
 
     Counters.Counter private _tokenCount;
@@ -51,6 +51,9 @@ contract Registry is ERC721Full {
     // Mapping from tokenIDs to purchase cost
     mapping(uint256 => uint256) private _tokenToCost;
 
+    // Mapping from tokenIDs to purchase cost
+    mapping(address => uint256[]) private _userAuctions;
+
 
     // View Functions
     // Domain
@@ -60,6 +63,11 @@ contract Registry is ERC721Full {
 
     function getAuctionEnd(uint256 _auctionID) external view returns (uint256) {
         return _auctions[_auctionID].auctionEnd;
+    }
+
+    // Auction
+    function getUserAuctions(address _user) external view returns (uint256[] memory auctions) {
+        return _userAuctions[_user];
     }
 
 
@@ -93,7 +101,7 @@ contract Registry is ERC721Full {
         return _newAuction(_domain);
     }
 
-    function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {
+    function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {       // !!! CHECK IF THIS IS RE-ENTERABLE !!!
         Auction storage a = _auctions[_auctionID];
         
         require(
@@ -106,12 +114,14 @@ contract Registry is ERC721Full {
             "Bidder must attach a good behaviour bond"
         );
 
+        _userAuctions[msg.sender].push(_auctionID);                                   // Let the user find the a
+
         if (a.blindedBid[msg.sender] == "") {                               // If user doesn't already have a bid
             a.blindedBid[msg.sender] = _blindedBid;
             return;
         } else {
             a.blindedBid[msg.sender] = _blindedBid;
-            msg.sender.transfer(10 ether);                                  // Refund their 2nd behaviour bond
+            msg.sender.transfer(10 ether);                                  // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
         }
     }
 
