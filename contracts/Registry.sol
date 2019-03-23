@@ -89,8 +89,8 @@ contract Registry is ERC721Full {
     }
 
     // Auction Functions
-    function startAuction(string calldata _domain) external payable {
-        _newAuction(_domain);
+    function startAuction(string calldata _domain) external payable returns (uint256 id) {
+        return _newAuction(_domain);
     }
 
     function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {
@@ -165,7 +165,7 @@ contract Registry is ERC721Full {
         );
         
         _registerDomain(a.domainName, a.winningBidder, a.winningBid);   // Winning bidder receives the domain
-        delete(_auctions[_auctionID]);                                                      // Delete the auction struct
+        delete(_auctions[_auctionID]);                                  // Delete the auction struct
         // Emit auctionEnd event
     }
 
@@ -187,7 +187,7 @@ contract Registry is ERC721Full {
         delete(_domainToAuction[_domainName]);                          // Stop blocking new auctions for this domain (should it deregister)
     }
 
-    function _newAuction(string memory _domain) internal {
+    function _newAuction(string memory _domain) internal returns (uint256) {
         require(
             verifyNewDomain(_domain),
             "Can't register an already existing domain"
@@ -203,6 +203,7 @@ contract Registry is ERC721Full {
         _domainToAuction[_domain] = _auctionID;
 
         _auctionCount.increment();
+        return _auctionID;
     }
 
     // Helper Functions
