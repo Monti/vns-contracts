@@ -23,21 +23,28 @@ contract Registry is ERC721Full {
         string                  domainName;
         bool                    biddingEnded;
         uint                    revealEnd;
-        mapping(address => uint)   refunds;                 // Mapping from address to refund amount
         mapping(address => bytes32) blindedBid;             // Mapping from id to shielded bids - sending a new bid updates your bid
+    }
+
+    struct Domain {
+        string                  domainName;
+        uint                    domainBond;                 // Amount paid for the domain minus fees thus far
+        uint                    yearlyCost;
+        bool                    autoRenew;
+        uint                    domainExpires;
     }
 
     Counters.Counter private _tokenCount;
     Counters.Counter private _auctionCount;
 
     // Mapping from token to domain name
-    mapping(uint256 => string) private _tokenToDomain;
+    mapping(uint256 => Domain) private _tokenToDomain;
 
     // Mapping from domain to address
     mapping(string => address) private _domainToAddress;
 
-    // Mapping from domain to subdomain
-    mapping(string => string) private _subDomainToDomain;
+    // Mapping from subdomain to domain
+    mapping(string => string) private _subDomainToDomain;   // Useless, delete this
 
     // Mapping from subdomain to address
     mapping(string => address) private _subDomainToAddress;
@@ -48,11 +55,18 @@ contract Registry is ERC721Full {
     // Mapping from domain names to active auction status.
     mapping(string => uint256) private _domainToAuction;
 
+    // Mapping from address to refunds
+    mapping(address => uint) private _refunds;
+
     // Mapping from tokenIDs to purchase cost
     mapping(uint256 => uint256) private _tokenToCost;
 
     // Mapping from tokenIDs to purchase cost
     mapping(address => uint256[]) private _userAuctions;
+
+    // Collected fees stored in the contract's balance
+    uint private _collectedFees;
+    uint private _costPerYear = 10 finney;
 
 
     // View Functions
@@ -79,7 +93,7 @@ contract Registry is ERC721Full {
     function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
-        string memory _domain = _tokenToDomain[_tokenID];
+        string memory _domain = _tokenToDomain[_tokenID].domainName;
         _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = _domain;
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
     }
@@ -87,16 +101,61 @@ contract Registry is ERC721Full {
     function removeSubdomain(uint256 _tokenID, string calldata _subDomain) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
-        string memory _domain = _tokenToDomain[_tokenID];
+        string memory _domain = _tokenToDomain[_tokenID].domainName;
         _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = "";
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
     }
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
-        string memory domainName =  _tokenToDomain[_tokenID];
+        string memory domainName =  _tokenToDomain[_tokenID].domainName;
         require(StringLength.strlen(domainName) < 7);                               // Minimum size is 6, longer domains will be deleted
 
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
+    }
+
+    function popDomain(uint256 _tokenID) external {
+        Domain memory d = _tokenToDomain[_tokenID];
+
+        require(
+            now > d.domainExpires && d.autoRenew == false,
+            "Can't pop domain before expiry"
+        );
+
+        _refunds[ownerOf(_tokenID)] = _refunds[ownerOf(_tokenID)].add(d.domainBond);
+        _burnDomain(_tokenID, d.domainName);
+    }
+
+    function collectDues(uint256 _tokenID) external payable {
+        Domain storage d = _tokenToDomain[_tokenID];
+
+        uint256 _yearsBehind = now.sub(d.domainExpires) / 365 days;
+        
+        if (_yearsBehind * _costPerYear <= d.domainBond) {                          // If the domain is not behind, cost is 0, statement will always pass
+            d.domainBond -= _yearsBehind * _costPerYear;
+            d.domainExpires += _yearsBehind * 365 days;
+            return;
+        }
+
+        // No refund is offered to late domains with less than a year's worth of bond
+        _burnDomain(_tokenID, d.domainName);
+    }
+
+    function extendDomain(uint256 _tokenID, uint256 _years) external payable {
+        Domain storage d = _tokenToDomain[_tokenID];
+        
+        require(
+            msg.value == _costPerYear * _years,
+            "Payment must cover purchase"
+        );
+
+        d.domainExpires.add(_years * 365);
+        _collectedFees.add(msg.value);
+    }
+
+    function enableAutoRewnew(uint256 _tokenID) external {
+        Domain storage d = _tokenToDomain[_tokenID];
+
+        d.autoRenew = true;
     }
 
     // Auction Functions
@@ -161,7 +220,7 @@ contract Registry is ERC721Full {
         }
 
         if (a.winningBidder != address(0)) {
-            a.refunds[a.winningBidder] += a.winningBid + 10 ether;          // Can we implicitly convert ether to uint256?
+            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + 10 ether);          // Can we implicitly convert ether to uint256?
         }
 
         a.winningBidder = msg.sender;
@@ -196,10 +255,11 @@ contract Registry is ERC721Full {
         _tokenCount.increment();                                        // Increment counter after minting
 
         // Set VNS Specific Data
-        _tokenToDomain[_tokenID] = _domainName;                         // Link the tokenID to the current address
+        _tokenToDomain[_tokenID] = Domain(_domainName, _pricePaid - _costPerYear, _costPerYear, false, now + 365 days);   // Auto renewals are off by default
         _domainToAddress[_domainName] = _owner;                         // Intialize the address to point at the owner
-        _tokenToCost[_tokenID] = _pricePaid;                            // Record how much the domain cost to register
-        delete(_domainToAuction[_domainName]);                          // Stop blocking new auctions for this domain (should it deregister)
+        _collectedFees.add(_costPerYear);                                 // 
+
+        delete(_domainToAuction[_domainName]);                          // Stop blocking new auctions for this domain (should the domain deregister)
     }
 
     function _newAuction(string memory _domain) internal returns (uint256) {
