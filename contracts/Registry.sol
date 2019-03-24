@@ -10,6 +10,7 @@ import "./utils/StringLength.sol";
 contract Registry is ERC721Full {
     // using Counters for Counters.Counter;
     using StringLength for string;
+    using SafeMath for uint256;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
         _tokenCount.increment();                            // Start counters at 1
@@ -74,16 +75,15 @@ contract Registry is ERC721Full {
 
 
     // View Functions
-
-    function getFeesEarned() external view returns (uint256) {
-        return _collectedFees;
+    function getFeesEarned() external view returns (uint256 contractBalance, uint256 feesEarned) {
+        return (address(this).balance, _collectedFees);
     }
 
     // Domain
     function getDomain(uint256 _tokenID) external view returns (string memory domainName, uint domainBond, uint yearlyCost, bool autoRenew, uint domainExpires) {
         Domain memory d = _tokenToDomain[_tokenID];
 
-        return(d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
+        return (d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
     }
 
     function resolveDomain(string calldata _domainName) external view returns (address) {
@@ -96,7 +96,7 @@ contract Registry is ERC721Full {
         
         Auction memory a = _auctions[_auctionID];
 
-        return(a.winningBid, a.winningBidder, a.auctionEnd, a.domainName, a.biddingEnded, a.revealEnd);
+        return (a.winningBid, a.winningBidder, a.auctionEnd, a.domainName, a.biddingEnded, a.revealEnd);
     }
 
     function getAuctionID(string calldata _domain) external view returns (uint256 auctionID) {
@@ -105,6 +105,10 @@ contract Registry is ERC721Full {
 
     function getUserAuctions(address _user) external view returns (uint256[] memory auctions) {
         return _userAuctions[_user];
+    }
+
+    function getUserRefunds(address _user) external view returns (uint256 refundsAvailable) {
+        return _refunds[_user];
     }
 
     // External Public Functions
@@ -127,8 +131,9 @@ contract Registry is ERC721Full {
     
     function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
         string memory domainName =  _tokenToDomain[_tokenID].domainName;
-        require(StringLength.strlen(domainName) < 7);                               // Minimum size is 6, longer domains will be deleted
+        require(domainName.strlen() < 7);                                           // Minimum size is 6, longer domains will be deleted
 
+        _collectedFees += _tokenToDomain[_tokenID].domainBond;
         _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
     }
 
@@ -147,7 +152,7 @@ contract Registry is ERC721Full {
     function collectDues(uint256 _tokenID) external payable {
         Domain storage d = _tokenToDomain[_tokenID];
 
-        uint256 _yearsBehind = now.sub(d.domainExpires) / 365 days;
+        uint256 _yearsBehind = now.sub(d.domainExpires) / 365 days;                 // Throws if d.domainExpires > now
         
         if (_yearsBehind * _costPerYear <= d.domainBond) {                          // If the domain is not behind, cost is 0, statement will always pass
             d.domainBond -= _yearsBehind * _costPerYear;
@@ -155,7 +160,7 @@ contract Registry is ERC721Full {
             return;
         }
 
-        // No refund is offered to late domains with less than a year's worth of bond
+        // No refund is offered to expired auto-renew domains with less than a year's worth of bond
         _burnDomain(_tokenID, d.domainName);
     }
 
@@ -168,13 +173,11 @@ contract Registry is ERC721Full {
         );
 
         d.domainExpires.add(_years * 365);
-        _collectedFees.add(msg.value);
+        _collectedFees += msg.value;
     }
 
     function enableAutoRewnew(uint256 _tokenID) external {
-        Domain storage d = _tokenToDomain[_tokenID];
-
-        d.autoRenew = true;
+        _tokenToDomain[_tokenID].autoRenew = true;
     }
 
     // Auction Functions
@@ -191,18 +194,18 @@ contract Registry is ERC721Full {
         );
 
         require(
-            msg.value == _behaviourBond,                                          // Bond dissincentivises no-show bidding
+            msg.value == _behaviourBond,                                        // Bond dissincentivises no-show bidding
             "Bidder must attach a good behaviour bond"
         );
 
-        _userAuctions[msg.sender].push(_auctionID);                                   // Let the user find the a
+        _userAuctions[msg.sender].push(_auctionID);                             // Let the user find the a
 
-        if (a.blindedBid[msg.sender] == "") {                               // If user doesn't already have a bid
+        if (a.blindedBid[msg.sender] == "") {                                   // If user doesn't already have a bid
             a.blindedBid[msg.sender] = _blindedBid;
             return;
         } else {
             a.blindedBid[msg.sender] = _blindedBid;
-            msg.sender.transfer(_behaviourBond);                                  // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
+            msg.sender.transfer(_behaviourBond);                                // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
         }
     }
 
@@ -214,7 +217,7 @@ contract Registry is ERC721Full {
             "Cannot close an auction too early, or after it has already been closed"
         );
 
-        a.biddingEnded == true;
+        a.biddingEnded = true;
         a.revealEnd = now + _revealTime;
         // Emit auctionEnd event
     }
@@ -223,7 +226,7 @@ contract Registry is ERC721Full {
         Auction storage a = _auctions[_auctionID];
         
         require(
-            !a.biddingEnded && now < a.revealEnd,
+            a.biddingEnded && now < a.revealEnd,
             "Cannot reveal before auction has ended, or after reveal period has ended"
         );
 
@@ -234,12 +237,12 @@ contract Registry is ERC721Full {
 
         if (msg.value <= a.winningBid) {
             delete(a.blindedBid[msg.sender]);
-            msg.sender.transfer(msg.value + 10);
+            msg.sender.transfer(msg.value + _behaviourBond);
             return false;
         }
 
         if (a.winningBidder != address(0)) {
-            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + _behaviourBond);          // Can we implicitly convert ether to uint256?
+            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + _behaviourBond);
         }
 
         a.winningBidder = msg.sender;
@@ -251,7 +254,7 @@ contract Registry is ERC721Full {
         Auction storage a = _auctions[_auctionID];
         
         require(
-            now > a.revealEnd,
+            now > a.revealEnd && a.revealEnd != 0,
             "Cannot finalize the auction too early"
         );
 
@@ -262,6 +265,12 @@ contract Registry is ERC721Full {
         // Emit auctionEnd event
     }
 
+    function claimRefund(address payable _claimant) external {
+        uint256 _amountToRefund = _refunds[_claimant];
+        _refunds[_claimant] = 0;                                            // Reset refundable amount before refunding
+        _claimant.transfer(_amountToRefund);
+    }
+
     // Private Functions
     function _registerDomain(string memory _domainName, address _owner, uint256 _pricePaid) internal {
         require(
@@ -269,16 +278,16 @@ contract Registry is ERC721Full {
             "Domain is already registered"
         );          
 
-        uint256 _tokenID = _tokenCount.current();                       // tokenID is equal to its count
-        _mint(_owner, _tokenID);                                        // Call the mint function of ERC721Enumerable
-        _tokenCount.increment();                                        // Increment counter after minting
+        uint256 _tokenID = _tokenCount.current();                           // tokenID is equal to its count
+        _mint(_owner, _tokenID);                                            // Call the mint function of ERC721Enumerable
+        _tokenCount.increment();                                            // Increment counter after minting
 
         // Set VNS Specific Data
+        _collectedFees += _costPerYear;
         _tokenToDomain[_tokenID] = Domain(_domainName, _pricePaid - _costPerYear, _costPerYear, false, now + 365 days);   // Auto renewals are off by default
-        _domainToAddress[_domainName] = _owner;                         // Intialize the address to point at the owner
-        _collectedFees.add(_costPerYear);                                 // 
+        _domainToAddress[_domainName] = _owner;                             // Intialize the address to point at the owner
 
-        delete(_domainToAuction[_domainName]);                          // Stop blocking new auctions for this domain (should the domain deregister)
+        delete(_domainToAuction[_domainName]);                              // Stop blocking new auctions for this domain (should the domain deregister)
     }
 
     function _newAuction(string memory _domain) internal returns (uint256) {
@@ -292,7 +301,7 @@ contract Registry is ERC721Full {
         );
 
         uint _auctionID = _auctionCount.current();
-        uint _auctionEnd = now + _biddingTime;                        // Bidding lasts 3 days
+        uint _auctionEnd = now + _biddingTime;                              // Bidding lasts 3 days
         _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false, 0);   // Creates new auction struct in the auctions mapping
         _domainToAuction[_domain] = _auctionID;
 
