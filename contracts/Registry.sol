@@ -66,20 +66,39 @@ contract Registry is ERC721Full {
 
     // Collected fees stored in the contract's balance
     uint private _collectedFees;
-    uint private _costPerYear = 10 finney;
+    uint private _costPerYear = 1 ether;
+    uint private _behaviourBond = 5 ether;
+    uint private _biddingTime = 3 days;
+    uint private _revealTime = 1 days;
+
 
 
     // View Functions
+
+    function getFeesEarned() external view returns (uint256) {
+        return _collectedFees;
+    }
+
     // Domain
+    function getDomain(uint256 _tokenID) external view returns (string memory domainName, uint domainBond, uint yearlyCost, bool autoRenew, uint domainExpires) {
+        Domain memory d = _tokenToDomain[_tokenID];
+
+        return(d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
+    }
+
     function resolveDomain(string calldata _domainName) external view returns (address) {
         return _domainToAddress[_domainName];
     }
 
-    function getAuctionEnd(uint256 _auctionID) external view returns (uint256) {
-        return _auctions[_auctionID].auctionEnd;
+    // Auction
+    function getAuction(uint256 _auctionID) external view 
+        returns (uint winningBid, address winningBidder, uint auctionEnd, string memory domainName, bool biddingEnded, uint revealEnd) {
+        
+        Auction memory a = _auctions[_auctionID];
+
+        return(a.winningBid, a.winningBidder, a.auctionEnd, a.domainName, a.biddingEnded, a.revealEnd);
     }
 
-    // Auction
     function getAuctionID(string calldata _domain) external view returns (uint256 auctionID) {
         return _domainToAuction[_domain];
     }
@@ -172,7 +191,7 @@ contract Registry is ERC721Full {
         );
 
         require(
-            msg.value == 10 ether,                                          // Bond dissincentivises no-show bidding
+            msg.value == _behaviourBond,                                          // Bond dissincentivises no-show bidding
             "Bidder must attach a good behaviour bond"
         );
 
@@ -183,7 +202,7 @@ contract Registry is ERC721Full {
             return;
         } else {
             a.blindedBid[msg.sender] = _blindedBid;
-            msg.sender.transfer(10 ether);                                  // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
+            msg.sender.transfer(_behaviourBond);                                  // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
         }
     }
 
@@ -196,16 +215,16 @@ contract Registry is ERC721Full {
         );
 
         a.biddingEnded == true;
-        a.revealEnd = now + 1 days;
+        a.revealEnd = now + _revealTime;
         // Emit auctionEnd event
     }
 
-    function revealBid(bytes32 _secret, uint256 _auctionID) external payable returns (bool winning) {
+    function revealBid(uint256 _auctionID, bytes32 _secret) external payable returns (bool winning) {
         Auction storage a = _auctions[_auctionID];
         
         require(
             !a.biddingEnded && now < a.revealEnd,
-            "Cannot reveal before auction has ended and after reveal period has ended"
+            "Cannot reveal before auction has ended, or after reveal period has ended"
         );
 
         require(
@@ -220,7 +239,7 @@ contract Registry is ERC721Full {
         }
 
         if (a.winningBidder != address(0)) {
-            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + 10 ether);          // Can we implicitly convert ether to uint256?
+            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + _behaviourBond);          // Can we implicitly convert ether to uint256?
         }
 
         a.winningBidder = msg.sender;
@@ -237,7 +256,7 @@ contract Registry is ERC721Full {
         );
 
         if (a.winningBidder != address(0)) {
-            _registerDomain(a.domainName, a.winningBidder, a.winningBid);   // Winning bidder, if they exist, receives the domain
+            _registerDomain(a.domainName, a.winningBidder, a.winningBid + _behaviourBond);   // Winning bidder, if they exist, receives the domain
         }
         delete(_auctions[_auctionID]);                                      // Delete the auction struct
         // Emit auctionEnd event
@@ -273,7 +292,7 @@ contract Registry is ERC721Full {
         );
 
         uint _auctionID = _auctionCount.current();
-        uint _auctionEnd = now + 3 days;                        // Bidding lasts 3 days
+        uint _auctionEnd = now + _biddingTime;                        // Bidding lasts 3 days
         _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false, 0);   // Creates new auction struct in the auctions mapping
         _domainToAuction[_domain] = _auctionID;
 
