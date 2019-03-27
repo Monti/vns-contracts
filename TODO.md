@@ -1,5 +1,5 @@
 ### Still left to do
 
-* Add yearly fees, enable domain removal if they dont renew
-* Let a user reveal bid after expiry to reclaim some % of their bond?
-* Add events
+* Let contract owner claim un-revealed bids
+* More events
+* Lots of testing

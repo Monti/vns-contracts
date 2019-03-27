@@ -17,6 +17,13 @@ contract Registry is ERC721Full {
         _auctionCount.increment();                          // Start counters at 1
     }
 
+    // Collected fees stored in the contract's balance
+    uint private _collectedFees;
+    uint private _costPerYear = 1 ether;
+    uint private _behaviourBond = 5 ether;
+    uint private _biddingTime = 3 days;
+    uint private _revealTime = 1 days;
+
     struct Auction {
         uint                    winningBid;
         address                 winningBidder;
@@ -65,13 +72,38 @@ contract Registry is ERC721Full {
     // Mapping from tokenIDs to purchase cost
     mapping(address => uint256[]) private _userAuctions;
 
-    // Collected fees stored in the contract's balance
-    uint private _collectedFees;
-    uint private _costPerYear = 1 ether;
-    uint private _behaviourBond = 5 ether;
-    uint private _biddingTime = 3 days;
-    uint private _revealTime = 1 days;
 
+    // Events
+    event domainRegistered (
+        address indexed _owner,
+        string  indexed _domain,
+        uint256 indexed _tokenID,
+        uint256 _bond
+    );
+
+    event auctionStarted (
+        uint256 indexed _auctionID,
+        string  indexed _domain,
+        uint256 _auctionEnd
+    );
+
+    event auctionEnded (
+        uint256 indexed _auctionID,
+        string  indexed _domain,
+        address indexed _winningBidder,
+        uint256 _winningBid
+    );
+
+    event biddingEnded (
+        uint256 indexed _auctionID,
+        string  indexed _domain
+    );
+
+    event domainAddressChanged (
+        uint256 indexed _tokenID,
+        string  indexed _domain,
+        address indexed _targetAddress
+    );
 
 
     // View Functions
@@ -113,6 +145,17 @@ contract Registry is ERC721Full {
 
     // External Public Functions
     // Domain Functions
+    function setDomain(uint256 _tokenID, address _targetAddress) {
+        require (
+            msg.sender == ownerOf(_tokenID),
+            "Only the owner of the domain can set its address"
+        );
+
+        string memory _domainName = _tokenToDomain[_tokenID];
+        _domainToAddress[_domainName] = _targetAddress;
+        emit domainAddressChanged(_tokenID, _domainName, _targetAddress);
+    }
+
     function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
@@ -219,7 +262,7 @@ contract Registry is ERC721Full {
 
         a.biddingEnded = true;
         a.revealEnd = now + _revealTime;
-        // Emit auctionEnd event
+        emit biddingEnded(_auctionID, a.domainName);
     }
 
     function revealBid(uint256 _auctionID, bytes32 _secret) external payable returns (bool winning) {
@@ -261,8 +304,8 @@ contract Registry is ERC721Full {
         if (a.winningBidder != address(0)) {
             _registerDomain(a.domainName, a.winningBidder, a.winningBid + _behaviourBond);   // Winning bidder, if they exist, receives the domain
         }
+        emit auctionEnded(a.auctionID, a.domainName, a.winningBidder, a.winningBid);
         delete(_auctions[_auctionID]);                                      // Delete the auction struct
-        // Emit auctionEnd event
     }
 
     function claimRefund(address payable _claimant) external {
@@ -288,6 +331,7 @@ contract Registry is ERC721Full {
         _domainToAddress[_domainName] = _owner;                             // Intialize the address to point at the owner
 
         delete(_domainToAuction[_domainName]);                              // Stop blocking new auctions for this domain (should the domain deregister)
+        emit domainRegistered(_owner, _domainName, _tokenID, _pricePaid - _costPerYear);
     }
 
     function _newAuction(string memory _domain) internal returns (uint256) {
@@ -306,6 +350,7 @@ contract Registry is ERC721Full {
         _domainToAuction[_domain] = _auctionID;
 
         _auctionCount.increment();
+        emit auctionStarted(_auctionID, _domain, _auctionEnd);
         return _auctionID;
     }
 
