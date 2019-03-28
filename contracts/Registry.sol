@@ -107,8 +107,13 @@ contract Registry is ERC721Full {
 
 
     // View Functions
-    function getFeesEarned() external view returns (uint256 contractBalance, uint256 feesEarned) {
-        return (address(this).balance, _collectedFees);
+    // function getFeesEarned() external view returns (uint256 contractBalance, uint256 feesEarned) {
+    //     return (address(this).balance, _collectedFees);
+    // }
+
+    // VIP-181 Functions
+    function tokensOfOwner(address owner) external view returns (uint256[] memory) {
+        return _tokensOfOwner(owner);
     }
 
     // Domain
