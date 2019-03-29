@@ -4,7 +4,6 @@ import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 import "openzeppelin-solidity/blob/master/contracts/ownership/Ownable.sol";
 import "./utils/StringLength.sol";
-import "./interfaces/VIP181.sol";
 
 // Notes:
 // * All domains must be lower case, this will be done by enforcing 0-9, a-z
@@ -13,7 +12,7 @@ contract ThorNode {
     function isX(address _target) public pure returns(bool){}
 }
 
-contract Registry is ERC721Full, Ownable, VIP181 {
+contract Registry is ERC721Full, Ownable {
     // using Counters for Counters.Counter;
     using StringLength for string;
     using SafeMath for uint256;
