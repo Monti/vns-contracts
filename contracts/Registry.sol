@@ -4,11 +4,16 @@ import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
 import "openzeppelin-solidity/blob/master/contracts/ownership/Ownable.sol";
 import "./utils/StringLength.sol";
+import "./interfaces/VIP181.sol";
 
 // Notes:
 // * All domains must be lower case, this will be done by enforcing 0-9, a-z
 
-contract Registry is ERC721Full, Ownable {
+contract ThorNode {
+    function isX(address _target) public pure returns(bool){}
+}
+
+contract Registry is ERC721Full, Ownable, VIP181 {
     // using Counters for Counters.Counter;
     using StringLength for string;
     using SafeMath for uint256;
@@ -16,6 +21,7 @@ contract Registry is ERC721Full, Ownable {
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
         _tokenCount.increment();                                // Start counters at 1
         _auctionCount.increment();                              // Start counters at 1
+        _thorNodeContract = ThorNode(0xd4dac3a95c741773F093d59256A21ED6FCc768a7);    // Testnet Address
     }
 
     // Collected fees stored in the contract's balance
@@ -24,6 +30,9 @@ contract Registry is ERC721Full, Ownable {
     uint private _behaviourBond = 5 ether;
     uint private _biddingTime = 3 days;
     uint private _revealTime = 1 days;
+    uint private _regularLength = 7;
+    uint private _xnodeLength = 4;
+    ThorNode private _thorNodeContract;
 
     struct Auction {
         uint                    winningBid;
@@ -173,12 +182,23 @@ contract Registry is ERC721Full, Ownable {
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
     }
     
-    function invalidateDomain(uint256 _tokenID) external {                          // Lets users delete domains that are > 6 chars
-        string memory domainName =  _tokenToDomain[_tokenID].domainName;
-        require(domainName.strlen() < 7);                                           // Minimum size is 6, longer domains will be deleted
+    function invalidateDomain(uint256 _tokenID) external {         
+        Domain memory d = _tokenToDomain[_tokenID];                                 // Lets users delete domains that are > 6 chars
+
+        if (_thorNodeContract.isX(ownerOf(_tokenID))) {
+            require(
+                d.domainName.strlen() < _xnodeLength,
+                "Domain name is not too short"
+            );
+        } else {
+            require(
+                d.domainName.strlen() < _regularLength,
+                "Domain name is not too short"
+            );
+        }
 
         _collectedFees += _tokenToDomain[_tokenID].domainBond;
-        _burnDomain(_tokenID, domainName);                                          // Wipe domain data and delete the token
+        _burnDomain(_tokenID, d.domainName);                                        // Wipe domain data and delete the token
     }
 
     function popDomain(uint256 _tokenID) external {
