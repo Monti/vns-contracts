@@ -196,15 +196,34 @@ contract Registry is ERC721Full, Ownable {
     function collectDues(uint256 _tokenID) external payable {
         Domain storage d = _tokenToDomain[_tokenID];
 
-        uint256 _yearsBehind = now.sub(d.domainExpires) / 365 days;                 // Throws if d.domainExpires > now
+        require (
+            d.autoRenew == true,
+            "Only auto-renewing domains can pay dues"
+        );
+
+        uint256 _yearsBehind = now.sub(d.domainExpires) / 365 days + 1;             // Throws if d.domainExpires > now, rounds up years overdue
         
+        // IF a domain can cover renewal costs
         if (_yearsBehind * _costPerYear <= d.domainBond) {                          // If the domain is not behind, cost is 0, statement will always pass
             d.domainBond -= _yearsBehind * _costPerYear;
             d.domainExpires += _yearsBehind * 365 days;
             return;
         }
 
-        // No refund is offered to expired auto-renew domains with less than a year's worth of bond
+        // IF a domain cannot cover renewal costs, it is de-registered without refund
+        _collectedFees += d.domainBond;
+        _burnDomain(_tokenID, d.domainName);
+    }
+
+    function withdrawEarly(uint256 _tokenID) external {
+        Domain memory d = _tokenToDomain[_tokenID];
+
+        require (
+            msg.sender == ownerOf(_tokenID),
+            "Only the owner of a domain can deregister"
+        );
+
+        _refunds[ownerOf(_tokenID)] = _refunds[ownerOf(_tokenID)].add(d.domainBond);
         _burnDomain(_tokenID, d.domainName);
     }
 
