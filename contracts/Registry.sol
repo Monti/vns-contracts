@@ -2,12 +2,13 @@ pragma solidity ^0.5.2;
 
 import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
+import "openzeppelin-solidity/blob/master/contracts/ownership/Ownable.sol";
 import "./utils/StringLength.sol";
 
 // Notes:
 // * All domains must be lower case, this will be done by enforcing 0-9, a-z
 
-contract Registry is ERC721Full {
+contract Registry is ERC721Full, Ownable {
     // using Counters for Counters.Counter;
     using StringLength for string;
     using SafeMath for uint256;
@@ -94,7 +95,7 @@ contract Registry is ERC721Full {
         uint256 _winningBid
     );
 
-    event biddingEnded (
+    event biddingClosed (
         uint256 indexed _auctionID,
         string  indexed _domain
     );
@@ -150,13 +151,13 @@ contract Registry is ERC721Full {
 
     // External Public Functions
     // Domain Functions
-    function setDomain(uint256 _tokenID, address _targetAddress) {
+    function setDomain(uint256 _tokenID, address _targetAddress) public {
         require (
             msg.sender == ownerOf(_tokenID),
             "Only the owner of the domain can set its address"
         );
 
-        string memory _domainName = _tokenToDomain[_tokenID];
+        string memory _domainName = _tokenToDomain[_tokenID].domainName;
         _domainToAddress[_domainName] = _targetAddress;
         emit domainAddressChanged(_tokenID, _domainName, _targetAddress);
     }
@@ -267,7 +268,7 @@ contract Registry is ERC721Full {
 
         a.biddingEnded = true;
         a.revealEnd = now + _revealTime;
-        emit biddingEnded(_auctionID, a.domainName);
+        emit biddingClosed(_auctionID, a.domainName);
     }
 
     function revealBid(uint256 _auctionID, bytes32 _secret) external payable returns (bool winning) {
@@ -309,7 +310,7 @@ contract Registry is ERC721Full {
         if (a.winningBidder != address(0)) {
             _registerDomain(a.domainName, a.winningBidder, a.winningBid + _behaviourBond);   // Winning bidder, if they exist, receives the domain
         }
-        emit auctionEnded(a.auctionID, a.domainName, a.winningBidder, a.winningBid);
+        emit auctionEnded(_auctionID, a.domainName, a.winningBidder, a.winningBid);
         delete(_auctions[_auctionID]);                                      // Delete the auction struct
     }
 
@@ -317,6 +318,17 @@ contract Registry is ERC721Full {
         uint256 _amountToRefund = _refunds[_claimant];
         _refunds[_claimant] = 0;                                            // Reset refundable amount before refunding
         _claimant.transfer(_amountToRefund);
+    }
+
+    function claimFees(address payable _owner) external {
+        require(
+            _owner == owner(),
+            "Can only transfer accrued fees to owner"
+        );
+
+        uint256 _receivable = _collectedFees;
+        _collectedFees = 0;
+        _owner.transfer(_receivable);
     }
 
     // Private Functions
