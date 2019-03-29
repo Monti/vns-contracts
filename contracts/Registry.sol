@@ -14,8 +14,8 @@ contract Registry is ERC721Full, Ownable {
     using SafeMath for uint256;
     
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
-        _tokenCount.increment();                            // Start counters at 1
-        _auctionCount.increment();                          // Start counters at 1
+        _tokenCount.increment();                                // Start counters at 1
+        _auctionCount.increment();                              // Start counters at 1
     }
 
     // Collected fees stored in the contract's balance
@@ -32,12 +32,12 @@ contract Registry is ERC721Full, Ownable {
         string                  domainName;
         bool                    biddingEnded;
         uint                    revealEnd;
-        mapping(address => bytes32) blindedBid;             // Mapping from id to shielded bids - sending a new bid updates your bid
+        mapping(address => bytes32) blindedBid;                 // Mapping from id to shielded bids - sending a new bid updates your bid
     }
 
     struct Domain {
         string                  domainName;
-        uint                    domainBond;                 // Amount paid for the domain minus fees thus far
+        uint                    domainBond;                     // Amount paid for the domain minus fees thus far
         uint                    yearlyCost;
         bool                    autoRenew;
         uint                    domainExpires;
@@ -51,9 +51,6 @@ contract Registry is ERC721Full, Ownable {
 
     // Mapping from domain to address
     mapping(string => address) private _domainToAddress;
-
-    // Mapping from subdomain to domain
-    mapping(string => string) private _subDomainToDomain;   // Useless, delete this
 
     // Mapping from subdomain to address
     mapping(string => address) private _subDomainToAddress;
@@ -166,7 +163,6 @@ contract Registry is ERC721Full, Ownable {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
         string memory _domain = _tokenToDomain[_tokenID].domainName;
-        _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = _domain;
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
     }
 
@@ -174,7 +170,6 @@ contract Registry is ERC721Full, Ownable {
         _isApprovedOrOwner(msg.sender, _tokenID);
 
         string memory _domain = _tokenToDomain[_tokenID].domainName;
-        _subDomainToDomain[string(abi.encodePacked(_subDomain, ".", _domain))] = "";
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = address(0);
     }
     
