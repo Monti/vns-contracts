@@ -212,7 +212,7 @@ contract Registry is ERC721Full, Ownable {
         _burnDomain(_tokenID, d.domainName);
     }
 
-    function collectDues(uint256 _tokenID) external payable {
+    function collectDues(uint256 _tokenID) external {
         Domain storage d = _tokenToDomain[_tokenID];
 
         require (
