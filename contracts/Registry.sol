@@ -267,7 +267,7 @@ contract Registry is ERC721Full, Ownable {
         return _newAuction(_domain);
     }
 
-    function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {       // !!! CHECK IF THIS IS RE-ENTERABLE !!!
+    function bidOnAuction(uint256 _auctionID, bytes32 _blindedBid) external payable {
         Auction storage a = _auctions[_auctionID];
         
         require(
@@ -276,7 +276,7 @@ contract Registry is ERC721Full, Ownable {
         );
 
         require(
-            msg.value == _behaviourBond,                                        // Bond dissincentivises no-show bidding
+            msg.value == _behaviourBond,                                        // Need to attach _behaviourBond
             "Bidder must attach a good behaviour bond"
         );
 
@@ -287,7 +287,7 @@ contract Registry is ERC721Full, Ownable {
             return;
         } else {
             a.blindedBid[msg.sender] = _blindedBid;
-            msg.sender.transfer(_behaviourBond);                                // Refund their 2nd behaviour bond !!! CHECK IF THIS IS RE-ENTERABLE !!!
+            msg.sender.transfer(_behaviourBond);                                // Refund their 2nd behaviour bond !! CHECK IF THIS IS RE-ENTERABLE !!
         }
     }
 
@@ -324,7 +324,7 @@ contract Registry is ERC721Full, Ownable {
         }
 
         if (a.winningBidder != address(0)) {
-            _refunds[a.winningBidder] = _refunds[a.winningBidder].add(a.winningBid + _behaviourBond);
+            _refunds[a.winningBidder] += a.winningBid + _behaviourBond;
         }
 
         a.winningBidder = msg.sender;
@@ -370,6 +370,11 @@ contract Registry is ERC721Full, Ownable {
             verifyNewDomain(_domainName),
             "Domain is already registered"
         );          
+
+        if (_pricePaid < _costPerYear) {                                    // Prevent underflows and fail gracefully
+            _collectedFees += _pricePaid;
+            return;
+        }
 
         uint256 _tokenID = _tokenCount.current();                           // tokenID is equal to its count
         _mint(_owner, _tokenID);                                            // Call the mint function of ERC721Enumerable
