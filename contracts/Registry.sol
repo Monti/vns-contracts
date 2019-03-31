@@ -2,7 +2,7 @@ pragma solidity 0.5.2;
 
 import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
-import "openzeppelin-solidity/blob/master/contracts/ownership/Ownable.sol";
+import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "./utils/StringLength.sol";
 
 // Notes:
@@ -118,6 +118,9 @@ contract Registry is ERC721Full, Ownable {
     // function getFeesEarned() external view returns (uint256 contractBalance, uint256 feesEarned) {
     //     return (address(this).balance, _collectedFees);
     // }
+    function isX() public view returns(bool) {
+        return _thorNodeContract.isX(msg.sender);
+    }
 
     // VIP-181 Functions
     function tokensOfOwner(address owner) external view returns (uint256[] memory) {
