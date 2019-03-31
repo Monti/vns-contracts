@@ -202,8 +202,10 @@ contract Registry is ERC721Full, Ownable {
             );
         }
 
-        _collectedFees += _tokenToDomain[_tokenID].domainBond;
+        _bounty = _tokenToDomain[_tokenID].domainBond / 10;
+        _collectedFees += _tokenToDomain[_tokenID].domainBond - _bounty;
         _burnDomain(_tokenID, d.domainName);                                        // Wipe domain data and delete the token
+        msg.sender.transfer(_bounty);
     }
 
     function popDomain(uint256 _tokenID) external {
