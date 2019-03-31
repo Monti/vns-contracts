@@ -123,7 +123,9 @@ contract Registry is ERC721Full, Ownable {
     }
 
     // Domain
-    function getDomain(uint256 _tokenID) external view returns (string memory domainName, uint domainBond, uint yearlyCost, bool autoRenew, uint domainExpires) {
+    function getDomain(uint256 _tokenID) external view 
+    returns (string memory domainName, uint domainBond, uint yearlyCost, bool autoRenew, uint domainExpires) {
+        
         Domain memory d = _tokenToDomain[_tokenID];
 
         return (d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
@@ -139,7 +141,7 @@ contract Registry is ERC721Full, Ownable {
 
     // Auction
     function getAuction(uint256 _auctionID) external view 
-        returns (uint winningBid, address winningBidder, uint auctionEnd, string memory domainName, bool biddingEnded, uint revealEnd) {
+    returns (uint winningBid, address winningBidder, uint auctionEnd, string memory domainName, bool biddingEnded, uint revealEnd) {
         
         Auction memory a = _auctions[_auctionID];
 
@@ -291,7 +293,7 @@ contract Registry is ERC721Full, Ownable {
             return;
         } else {
             a.blindedBid[msg.sender] = _blindedBid;
-            msg.sender.transfer(_behaviourBond);                                // Refund their 2nd behaviour bond !! CHECK IF THIS IS RE-ENTERABLE !!
+            msg.sender.transfer(_behaviourBond);
         }
     }
 
@@ -315,7 +317,6 @@ contract Registry is ERC721Full, Ownable {
             a.biddingEnded && now < a.revealEnd,
             "Cannot reveal before auction has ended, or after reveal period has ended"
         );
-
         require(
             a.blindedBid[msg.sender] == keccak256(abi.encodePacked(msg.value, _secret)),
             "Secret or attached value were incorrect"
@@ -371,7 +372,7 @@ contract Registry is ERC721Full, Ownable {
     // Private Functions
     function _registerDomain(string memory _domainName, address _owner, uint256 _pricePaid) internal {
         require(
-            verifyNewDomain(_domainName),
+            _verifyNewDomain(_domainName),
             "Domain is already registered"
         );          
 
@@ -395,7 +396,7 @@ contract Registry is ERC721Full, Ownable {
 
     function _newAuction(string memory _domain) internal returns (uint256) {
         require(
-            verifyNewDomain(_domain),
+            _verifyNewDomain(_domain),
             "Can't register an already existing domain"
         );
         require(
@@ -414,7 +415,7 @@ contract Registry is ERC721Full, Ownable {
     }
 
     // Helper Functions
-    function verifyNewDomain(string memory _domainName) internal view returns (bool) {
+    function _verifyNewDomain(string memory _domainName) internal view returns (bool) {
         return _domainToAddress[_domainName] == address(0);
     }
 
