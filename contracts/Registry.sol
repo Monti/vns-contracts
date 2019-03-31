@@ -214,7 +214,7 @@ contract Registry is ERC721Full, Ownable {
             "Can't pop domain before expiry"
         );
 
-        _refunds[ownerOf(_tokenID)] = _refunds[ownerOf(_tokenID)].add(d.domainBond);
+        _refunds[ownerOf(_tokenID)] += d.domainBond;
         _burnDomain(_tokenID, d.domainName);
     }
 
@@ -248,7 +248,7 @@ contract Registry is ERC721Full, Ownable {
             "Only the owner of a domain can deregister"
         );
 
-        _refunds[ownerOf(_tokenID)] = _refunds[ownerOf(_tokenID)].add(d.domainBond);
+        _refunds[ownerOf(_tokenID)] += d.domainBond;
         _burnDomain(_tokenID, d.domainName);
     }
 
@@ -260,7 +260,7 @@ contract Registry is ERC721Full, Ownable {
             "Payment must cover purchase"
         );
 
-        d.domainExpires.add(_years * 365);
+        d.domainExpires += (_years * 365);
         _collectedFees += msg.value;
     }
 
@@ -286,7 +286,7 @@ contract Registry is ERC721Full, Ownable {
             "Bidder must attach a good behaviour bond"
         );
 
-        _userAuctions[msg.sender].push(_auctionID);                             // Let the user find the a
+        _userAuctions[msg.sender].push(_auctionID);                             // Add auction to user's list
 
         if (a.blindedBid[msg.sender] == "") {                                   // If user doesn't already have a bid
             a.blindedBid[msg.sender] = _blindedBid;
@@ -405,11 +405,12 @@ contract Registry is ERC721Full, Ownable {
         );
 
         uint _auctionID = _auctionCount.current();
+        _auctionCount.increment();
         uint _auctionEnd = now + _biddingTime;                              // Bidding lasts 3 days
+
         _auctions[_auctionID] = Auction(0, address(0), _auctionEnd, _domain, false, 0);   // Creates new auction struct in the auctions mapping
         _domainToAuction[_domain] = _auctionID;
 
-        _auctionCount.increment();
         emit auctionStarted(_auctionID, _domain, _auctionEnd);
         return _auctionID;
     }
