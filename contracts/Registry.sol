@@ -1,4 +1,4 @@
-pragma solidity ^0.5.2;
+pragma solidity 0.5.2;
 
 import "openzeppelin-solidity/contracts/token/ERC721/ERC721Full.sol";
 import "openzeppelin-solidity/contracts/drafts/Counters.sol";
@@ -129,8 +129,12 @@ contract Registry is ERC721Full, Ownable {
         return (d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
     }
 
-    function resolveDomain(string calldata _domainName) external view returns (address) {
+    function resolveDomain(string calldata _subDomainName) external view returns (address) {
         return _domainToAddress[_domainName];
+    }
+
+    function resolveSubDomain(string calldata _domainName) external view returns (address) {
+        return _subDomainToAddress[_subDomainName];
     }
 
     // Auction
