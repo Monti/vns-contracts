@@ -20,13 +20,15 @@ contract Registry is ERC721Full, Ownable {
     constructor() ERC721Full("VeChain Name Service", "VNS") public {
         _tokenCount.increment();                                // Start counters at 1
         _auctionCount.increment();                              // Start counters at 1
-        _thorNodeContract = ThorNode(0xd4dac3a95c741773F093d59256A21ED6FCc768a7);    // Testnet Address
+        _thorNodeContract = ThorNode(0xb81E9C5f9644Dec9e5e3Cac86b4461A222072302);    // Testnet Address
+        _contractExpiry = now + 400 days;
     }
 
     // Collected fees stored in the contract's balance
     uint private _collectedFees;
-    uint private _costPerYear = 1 ether;
-    uint private _behaviourBond = 5 ether;
+    uint private _contractExpiry;                               // Contract is expected to migrate to V2 long before this date
+    uint private _costPerYear = 1000 ether;
+    uint private _behaviourBond = 5000 ether;
     uint private _biddingTime = 3 days;
     uint private _revealTime = 1 days;
     uint private _regularLength = 7;
@@ -131,11 +133,11 @@ contract Registry is ERC721Full, Ownable {
         return (d.domainName, d.domainBond, d.yearlyCost, d.autoRenew, d.domainExpires);
     }
 
-    function resolveDomain(string calldata _subDomainName) external view returns (address) {
+    function resolveDomain(string calldata _domainName) external view returns (address) {
         return _domainToAddress[_domainName];
     }
 
-    function resolveSubDomain(string calldata _domainName) external view returns (address) {
+    function resolveSubDomain(string calldata _subDomainName) external view returns (address) {
         return _subDomainToAddress[_subDomainName];
     }
 
@@ -189,7 +191,12 @@ contract Registry is ERC721Full, Ownable {
     
     function invalidateDomain(uint256 _tokenID) external {         
         Domain memory d = _tokenToDomain[_tokenID];                                 // Lets users delete domains that are > 6 chars
+        bytes memory dString = bytes(d.domainName);
 
+        require (
+            dString.length != 0,
+            "Domain must exist"
+        );
         if (_thorNodeContract.isX(ownerOf(_tokenID))) {
             require(
                 d.domainName.strlen() < _xnodeLength,
@@ -202,7 +209,7 @@ contract Registry is ERC721Full, Ownable {
             );
         }
 
-        _bounty = _tokenToDomain[_tokenID].domainBond / 10;
+        uint256 _bounty = _tokenToDomain[_tokenID].domainBond / 10;
         _collectedFees += _tokenToDomain[_tokenID].domainBond - _bounty;
         _burnDomain(_tokenID, d.domainName);                                        // Wipe domain data and delete the token
         msg.sender.transfer(_bounty);
@@ -369,6 +376,15 @@ contract Registry is ERC721Full, Ownable {
         uint256 _receivable = _collectedFees;
         _collectedFees = 0;
         _owner.transfer(_receivable);
+    }
+    
+    function recoverLostBids() external {
+        require(
+            msg.sender == owner() && now > _contractExpiry,
+            "Only owner can call after contract expiry"
+        );
+        
+        msg.sender.transfer(address(this).balance);
     }
 
     // Private Functions
