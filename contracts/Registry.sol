@@ -115,9 +115,6 @@ contract Registry is ERC721Full, Ownable {
 
 
     // View Functions
-    // function getFeesEarned() external view returns (uint256 contractBalance, uint256 feesEarned) {
-    //     return (address(this).balance, _collectedFees);
-    // }
     function isX() public view returns(bool) {
         return _thorNodeContract.isX(msg.sender);
     }
