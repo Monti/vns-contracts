@@ -137,6 +137,10 @@ contract Registry is ERC721Full, Ownable {
         return _thorNodeContract.isX(msg.sender);
     }
 
+    function isOwner(uint256 _tokenID) public view returns(bool) {
+        return msg.sender == ownerOf(_tokenID);
+    }
+
     // VIP-181 Functions
     function tokensOfOwner(address owner) external view returns (uint256[] memory) {
         return _tokensOfOwner(owner);
