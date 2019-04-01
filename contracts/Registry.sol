@@ -13,7 +13,6 @@ contract ThorNode {
 }
 
 contract Registry is ERC721Full, Ownable {
-    // using Counters for Counters.Counter;
     using StringLength for string;
     using SafeMath for uint256;
     
@@ -130,17 +129,12 @@ contract Registry is ERC721Full, Ownable {
     event subDomainAddressChanged(
         string  indexed _domain,
         string  indexed _subDomain,
-        string  indexed _targetAddress
+        address indexed _targetAddress
     );
     
     // View Functions
     function isX() public view returns(bool) {
         return _thorNodeContract.isX(msg.sender);
-    }
-
-
-    function isOwner(uint256 _tokenID) public view returns(bool) {
-        return msg.sender == ownerOf(_tokenID);
     }
 
     // VIP-181 Functions
@@ -199,7 +193,7 @@ contract Registry is ERC721Full, Ownable {
         emit domainAddressChanged(_tokenID, _domainName, _targetAddress);
     }
     
-    function setSubDomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) public {
+    function setSubDomain(uint256 _tokenID, string memory _subDomain, address _targetAddress) public {
         require (
             msg.sender == ownerOf(_tokenID),
             "Only the owner of the domain can set its address"
@@ -207,7 +201,7 @@ contract Registry is ERC721Full, Ownable {
 
         string memory _domainName = _tokenToDomain[_tokenID].domainName;
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domainName))] = _targetAddress;
-        emit subDomainAddressChanged(_domain, _subDomain, _targetAddress);
+        emit subDomainAddressChanged(_domainName, _subDomain, _targetAddress);
     }
 
     function addSubdomain(uint256 _tokenID, string calldata _subDomain, address _targetAddress) external {
@@ -217,8 +211,8 @@ contract Registry is ERC721Full, Ownable {
         _subDomainToAddress[string(abi.encodePacked(_subDomain, ".", _domain))] = _targetAddress;
         
         // Push domain to end of Domain to SubDomain array
-        _subDomainToIndex[string(abi.encodePacked(_subDomain, ".", _domain))] = _domainToSubDomains.length;
-        _domainToSubDomains.push(_subDomain);
+        _subDomainToIndex[string(abi.encodePacked(_subDomain, ".", _domain))] = _domainToSubDomains[_domain].length;
+        _domainToSubDomains[_domain].push(_subDomain);
         
         emit subDomainAdded(_domain, _subDomain, _targetAddress);
     }
@@ -235,7 +229,7 @@ contract Registry is ERC721Full, Ownable {
         string memory _lastIndexContent = _domainToSubDomains[_domain][_lastIndex];
         
         _domainToSubDomains[_domain][_toDeleteIndex] = _domainToSubDomains[_domain][_lastIndex];
-        _subDomainToIndex[string(abi.encodePacked(_lastIndexContent, ".", _domain)))] = _toDeleteIndex;
+        _subDomainToIndex[string(abi.encodePacked(_lastIndexContent, ".", _domain))] = _toDeleteIndex;
         
         _domainToSubDomains[_domain].length--;
         _subDomainToIndex[string(abi.encodePacked(_subDomain, ".", _domain))] = 0;
