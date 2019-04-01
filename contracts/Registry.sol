@@ -90,11 +90,34 @@ contract Registry is ERC721Full, Ownable {
         uint256 indexed _tokenID,
         uint256 _bond
     );
+    
+    event domainRemoved (
+        address indexed _owner,
+        string  indexed _domain,
+        uint256 indexed _tokenID
+    );
 
     event auctionStarted (
         uint256 indexed _auctionID,
         string  indexed _domain,
         uint256 _auctionEnd
+    );
+    
+    event newBidOnAuction (
+        uint256 indexed _auctionID,
+        address indexed _bidder
+    );
+
+    event biddingClosed (
+        uint256 indexed _auctionID,
+        string  indexed _domain
+    );
+    
+    event bidRevealed (
+        uint256 indexed _auctionID,
+        address indexed _bidder,
+        uint256 indexed _value,
+        bool _winning
     );
 
     event auctionEnded (
@@ -102,11 +125,6 @@ contract Registry is ERC721Full, Ownable {
         string  indexed _domain,
         address indexed _winningBidder,
         uint256 _winningBid
-    );
-
-    event biddingClosed (
-        uint256 indexed _auctionID,
-        string  indexed _domain
     );
 
     event domainAddressChanged (
@@ -130,6 +148,11 @@ contract Registry is ERC721Full, Ownable {
         string  indexed _domain,
         string  indexed _subDomain,
         address indexed _targetAddress
+    );
+    
+    event refundClaimed (
+        address indexed _claimant,
+        uint256 _value
     );
     
     // View Functions
@@ -356,6 +379,8 @@ contract Registry is ERC721Full, Ownable {
             a.blindedBid[msg.sender] = _blindedBid;
             msg.sender.transfer(_behaviourBond);
         }
+        
+        emit newBidOnAuction(_auctionID, msg.sender);
     }
 
     function finalizeBidding(uint256 _auctionID) external {
@@ -386,6 +411,7 @@ contract Registry is ERC721Full, Ownable {
         if (msg.value <= a.winningBid) {
             delete(a.blindedBid[msg.sender]);
             msg.sender.transfer(msg.value + _behaviourBond);
+            emit bidRevealed(_auctionID, msg.sender, msg.value, false);
             return false;
         }
 
@@ -395,6 +421,7 @@ contract Registry is ERC721Full, Ownable {
 
         a.winningBidder = msg.sender;
         a.winningBid = msg.value;
+        emit bidRevealed(_auctionID, msg.sender, msg.value, true);
         return true;
     }
 
@@ -417,6 +444,8 @@ contract Registry is ERC721Full, Ownable {
         uint256 _amountToRefund = _refunds[_claimant];
         _refunds[_claimant] = 0;                                            // Reset refundable amount before refunding
         _claimant.transfer(_amountToRefund);
+        
+        emit refundClaimed(msg.sender, _amountToRefund);
     }
 
     function claimFees(address payable _owner) external {
@@ -491,9 +520,13 @@ contract Registry is ERC721Full, Ownable {
     }
 
     function _burnDomain(uint256 _tokenID, string memory _domainName) internal {
+        address _owner = ownerOf(_tokenID);
+        
         delete _tokenToDomain[_tokenID];
         delete _domainToAddress[_domainName];
         _burn(ownerOf(_tokenID), _tokenID);
+        
+        emit domainRemoved(_owner, _domainName, _tokenID);
     }
 
 }
